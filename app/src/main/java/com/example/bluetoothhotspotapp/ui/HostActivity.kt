@@ -15,6 +15,9 @@ import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.bluetoothhotspotapp.BaseActivity
 import com.example.bluetoothhotspotapp.data.model.SearchHistory
+import com.example.bluetoothhotspotapp.data.model.SearchResult
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -23,6 +26,7 @@ class HostActivity : BaseActivity() {
 
     private lateinit var binding: ActivityHostBinding
     private lateinit var searchHistoryAdapter: SearchHistoryAdapter
+    private lateinit var currentResultsAdapter: HostSearchResultsAdapter
     private val searchHistoryList = mutableListOf<SearchHistory>()
 
     private var currentClientName: String? = null
@@ -46,6 +50,10 @@ class HostActivity : BaseActivity() {
                     val resultsCount = intent.getIntExtra(HostService.EXTRA_RESULTS_COUNT, 0)
                     onSearchResults(resultsCount)
                 }
+                HostService.ACTION_SEARCH_RESULTS_DATA -> {
+                    val resultsJson = intent.getStringExtra(HostService.EXTRA_RESULTS_JSON) ?: ""
+                    onSearchResultsData(resultsJson)
+                }
             }
         }
     }
@@ -56,7 +64,7 @@ class HostActivity : BaseActivity() {
         binding = ActivityHostBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        setupRecyclerView()
+        setupRecyclerViews()
         setupClickListeners()
 
         // Pedir permisos al iniciar
@@ -65,10 +73,18 @@ class HostActivity : BaseActivity() {
         }
     }
 
-    private fun setupRecyclerView() {
+    private fun setupRecyclerViews() {
+        // Configurar adaptador para historial de búsquedas
         searchHistoryAdapter = SearchHistoryAdapter()
         binding.recyclerViewSearchHistory.apply {
             adapter = searchHistoryAdapter
+            layoutManager = LinearLayoutManager(this@HostActivity)
+        }
+
+        // Configurar adaptador para resultados actuales
+        currentResultsAdapter = HostSearchResultsAdapter()
+        binding.recyclerViewCurrentResults.apply {
+            adapter = currentResultsAdapter
             layoutManager = LinearLayoutManager(this@HostActivity)
         }
     }
@@ -76,7 +92,11 @@ class HostActivity : BaseActivity() {
     private fun setupClickListeners() {
         binding.buttonStartHost.setOnClickListener {
             val serviceIntent = Intent(this, HostService::class.java)
-            startForegroundService(serviceIntent) // Usar esto para servicios en primer plano
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(serviceIntent)
+            } else {
+                startService(serviceIntent)
+            }
         }
 
         binding.buttonStopHost.setOnClickListener {
@@ -98,6 +118,9 @@ class HostActivity : BaseActivity() {
         }
         binding.layoutSearchStats.visibility = View.VISIBLE
         binding.textViewResultsCount.text = "Procesando..."
+
+        // Ocultar resultados anteriores mientras se procesan los nuevos
+        binding.layoutCurrentResults.visibility = View.GONE
     }
 
     private fun onSearchResults(resultsCount: Int) {
@@ -128,6 +151,32 @@ class HostActivity : BaseActivity() {
         }
     }
 
+    private fun onSearchResultsData(resultsJson: String) {
+        if (resultsJson.isNotEmpty()) {
+            try {
+                val gson = Gson()
+                val listType = object : TypeToken<List<SearchResult>>() {}.type
+                val results: List<SearchResult> = gson.fromJson(resultsJson, listType)
+
+                // Mostrar los resultados en el RecyclerView
+                currentResultsAdapter.submitList(results)
+
+                // Mostrar la sección de resultados si hay resultados
+                if (results.isNotEmpty()) {
+                    binding.layoutCurrentResults.visibility = View.VISIBLE
+                } else {
+                    binding.layoutCurrentResults.visibility = View.GONE
+                }
+            } catch (e: Exception) {
+                // En caso de error al parsear el JSON, ocultar la sección
+                binding.layoutCurrentResults.visibility = View.GONE
+                addLogMessage("Error al mostrar resultados: ${e.message}")
+            }
+        } else {
+            binding.layoutCurrentResults.visibility = View.GONE
+        }
+    }
+
     private fun resetClientMonitor() {
         currentClientName = null
         currentSearchQuery = null
@@ -136,6 +185,10 @@ class HostActivity : BaseActivity() {
         binding.textViewClientStatus.text = "Sin cliente conectado"
         binding.textViewCurrentSearch.visibility = View.GONE
         binding.layoutSearchStats.visibility = View.GONE
+        binding.layoutCurrentResults.visibility = View.GONE
+
+        // Limpiar resultados actuales
+        currentResultsAdapter.submitList(emptyList())
     }
 
     override fun onResume() {
@@ -145,6 +198,7 @@ class HostActivity : BaseActivity() {
             addAction(HostService.ACTION_LOG)
             addAction(HostService.ACTION_CLIENT_SEARCH)
             addAction(HostService.ACTION_SEARCH_RESULTS)
+            addAction(HostService.ACTION_SEARCH_RESULTS_DATA)
         }
         LocalBroadcastManager.getInstance(this).registerReceiver(logReceiver, filter)
     }

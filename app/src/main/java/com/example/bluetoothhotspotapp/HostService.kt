@@ -38,10 +38,12 @@ class HostService : Service() {
         const val ACTION_LOG = "com.example.bluetoothhotspotapp.HOST_LOG"
         const val ACTION_CLIENT_SEARCH = "com.example.bluetoothhotspotapp.CLIENT_SEARCH"
         const val ACTION_SEARCH_RESULTS = "com.example.bluetoothhotspotapp.SEARCH_RESULTS"
+        const val ACTION_SEARCH_RESULTS_DATA = "com.example.bluetoothhotspotapp.SEARCH_RESULTS_DATA"
         const val EXTRA_LOG_MESSAGE = "extra_log_message"
         const val EXTRA_SEARCH_QUERY = "extra_search_query"
         const val EXTRA_RESULTS_COUNT = "extra_results_count"
         const val EXTRA_CLIENT_NAME = "extra_client_name"
+        const val EXTRA_RESULTS_JSON = "extra_results_json"
     }
 
     @RequiresApi(Build.VERSION_CODES.O)
@@ -85,11 +87,17 @@ class HostService : Service() {
         LocalBroadcastManager.getInstance(this).sendBroadcast(intent)
     }
 
-    private fun notifySearchResults(resultsCount: Int) {
+    private fun notifySearchResults(resultsCount: Int, resultsJson: String) {
         val intent = Intent(ACTION_SEARCH_RESULTS).apply {
             putExtra(EXTRA_RESULTS_COUNT, resultsCount)
         }
         LocalBroadcastManager.getInstance(this).sendBroadcast(intent)
+
+        // Enviar también los datos de los resultados en un broadcast separado
+        val dataIntent = Intent(ACTION_SEARCH_RESULTS_DATA).apply {
+            putExtra(EXTRA_RESULTS_JSON, resultsJson)
+        }
+        LocalBroadcastManager.getInstance(this).sendBroadcast(dataIntent)
     }
 
     override fun onDestroy() {
@@ -217,8 +225,8 @@ class HostService : Service() {
 
                     logToActivity("Respuesta enviada a $clientName: $resultsCount resultados ($size bytes)")
 
-                    // Notificar a la Activity sobre los resultados enviados
-                    notifySearchResults(resultsCount)
+                    // Notificar a la Activity sobre los resultados enviados (ahora incluye el JSON)
+                    notifySearchResults(resultsCount, jsonResponse)
                 }
             } catch (e: IOException) {
                 logToActivity("Conexión perdida con $clientName: ${e.message}")
