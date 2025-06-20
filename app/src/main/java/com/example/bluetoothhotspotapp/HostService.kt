@@ -36,7 +36,12 @@ class HostService : Service() {
     companion object {
         const val CHANNEL_ID = "HostServiceChannel"
         const val ACTION_LOG = "com.example.bluetoothhotspotapp.HOST_LOG"
+        const val ACTION_CLIENT_SEARCH = "com.example.bluetoothhotspotapp.CLIENT_SEARCH"
+        const val ACTION_SEARCH_RESULTS = "com.example.bluetoothhotspotapp.SEARCH_RESULTS"
         const val EXTRA_LOG_MESSAGE = "extra_log_message"
+        const val EXTRA_SEARCH_QUERY = "extra_search_query"
+        const val EXTRA_RESULTS_COUNT = "extra_results_count"
+        const val EXTRA_CLIENT_NAME = "extra_client_name"
     }
 
     @RequiresApi(Build.VERSION_CODES.O)
@@ -71,6 +76,22 @@ class HostService : Service() {
         LocalBroadcastManager.getInstance(this).sendBroadcast(intent)
         Log.d("HostService", message)
     }
+
+    private fun notifyClientSearch(query: String, clientName: String) {
+        val intent = Intent(ACTION_CLIENT_SEARCH).apply {
+            putExtra(EXTRA_SEARCH_QUERY, query)
+            putExtra(EXTRA_CLIENT_NAME, clientName)
+        }
+        LocalBroadcastManager.getInstance(this).sendBroadcast(intent)
+    }
+
+    private fun notifySearchResults(resultsCount: Int) {
+        val intent = Intent(ACTION_SEARCH_RESULTS).apply {
+            putExtra(EXTRA_RESULTS_COUNT, resultsCount)
+        }
+        LocalBroadcastManager.getInstance(this).sendBroadcast(intent)
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         synchronized(lock) {
@@ -123,8 +144,9 @@ class HostService : Service() {
                     null
                 }
                 socket?.also {
-                    logToActivity("Cliente conectado: ${it.remoteDevice.name}")
-                    manageClientSocket(it)
+                    val clientName = it.remoteDevice.name ?: "Cliente desconocido"
+                    logToActivity("Cliente conectado: $clientName")
+                    manageClientSocket(it, clientName)
                     // Para este ejemplo, cerramos el socket del servidor después de una conexión.
                     // Si quisieras múltiples clientes simultáneos, la lógica sería más compleja.
                     // serverSocket?.close()
@@ -142,7 +164,7 @@ class HostService : Service() {
         }
     }
 
-    private fun manageClientSocket(socket: BluetoothSocket) {
+    private fun manageClientSocket(socket: BluetoothSocket, clientName: String) {
         serviceScope.launch {
             try {
                 val inputStream: InputStream = socket.inputStream
@@ -158,14 +180,27 @@ class HostService : Service() {
 
                     // Si el mensaje es un ping, lo ignoramos y seguimos escuchando
                     if (receivedMessage == "ping_keep_alive") {
-                        logToActivity("Ping recibido.")
+                        logToActivity("Ping recibido de $clientName")
                         continue
                     }
 
-                    logToActivity("Petición recibida: '$receivedMessage'")
+                    logToActivity("Petición recibida de $clientName: '$receivedMessage'")
+
+                    // Notificar a la Activity sobre la búsqueda del cliente
+                    notifyClientSearch(receivedMessage, clientName)
 
                     val jsonResponse = searchProcessor.processSearchQuery(receivedMessage)
                     val responseBytes = jsonResponse.toByteArray()
+
+                    // Contar resultados para mostrar en la UI
+                    val resultsCount = try {
+                        val gson = com.google.gson.Gson()
+                        val listType = object : com.google.gson.reflect.TypeToken<List<Any>>() {}.type
+                        val results: List<Any> = gson.fromJson(jsonResponse, listType)
+                        results.size
+                    } catch (e: Exception) {
+                        0
+                    }
 
                     // --- LÓGICA DE ENVÍO MEJORADA ---
                     // 1. Convertir el tamaño del JSON a bytes
@@ -179,18 +214,22 @@ class HostService : Service() {
                     // 3. Enviar el JSON
                     outputStream.write(responseBytes)
                     outputStream.flush()
-                    logToActivity("Respuesta enviada ($size bytes).")
+
+                    logToActivity("Respuesta enviada a $clientName: $resultsCount resultados ($size bytes)")
+
+                    // Notificar a la Activity sobre los resultados enviados
+                    notifySearchResults(resultsCount)
                 }
             } catch (e: IOException) {
-                logToActivity("Conexión perdida: ${e.message}")
+                logToActivity("Conexión perdida con $clientName: ${e.message}")
             } finally {
                 // Este bloque se ejecutará siempre, incluso si hay un error,
                 // asegurando que el socket se cierre.
                 try {
                     socket.close()
-                    logToActivity("Socket del cliente cerrado.")
+                    logToActivity("Socket del cliente $clientName cerrado.")
                 } catch (e: IOException) {
-                    logToActivity("Error al cerrar el socket del cliente.")
+                    logToActivity("Error al cerrar el socket del cliente $clientName.")
                 }
             }
         }

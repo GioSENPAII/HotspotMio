@@ -26,34 +26,111 @@
         app:layout_constraintStart_toEndOf="@id/button_start_host"
         app:layout_constraintTop_toTopOf="parent" />
 
+    <!-- Sección de monitoreo del cliente -->
+    <androidx.cardview.widget.CardView
+        android:id="@+id/card_client_monitor"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        app:cardCornerRadius="8dp"
+        app:cardElevation="4dp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/button_start_host">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="📱 Monitor del Cliente"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/text_view_client_status"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="Sin cliente conectado"
+                android:textColor="?android:attr/textColorSecondary" />
+
+            <TextView
+                android:id="@+id/text_view_current_search"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:background="#F5F5F5"
+                android:padding="12dp"
+                android:text="Esperando búsqueda..."
+                android:textSize="16sp"
+                android:visibility="gone" />
+
+            <LinearLayout
+                android:id="@+id/layout_search_stats"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:orientation="horizontal"
+                android:visibility="gone">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Resultados enviados: "
+                    android:textSize="14sp" />
+
+                <TextView
+                    android:id="@+id/text_view_results_count"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="0"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+
+            </LinearLayout>
+
+        </LinearLayout>
+
+    </androidx.cardview.widget.CardView>
+
+    <!-- Historial de búsquedas -->
     <TextView
-        android:id="@+id/text_view_status_label"
+        android:id="@+id/text_view_search_history_label"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginTop="16dp"
-        android:text="Estado:"
+        android:text="📋 Historial de Búsquedas"
+        android:textSize="16sp"
         android:textStyle="bold"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/button_start_host" />
+        app:layout_constraintTop_toBottomOf="@id/card_client_monitor" />
 
-    <TextView
-        android:id="@+id/text_view_status"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="8dp"
-        tools:text="Detenido"
-        app:layout_constraintStart_toEndOf="@id/text_view_status_label"
-        app:layout_constraintTop_toTopOf="@id/text_view_status_label" />
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/recycler_view_search_history"
+        android:layout_width="0dp"
+        android:layout_height="120dp"
+        android:layout_marginTop="8dp"
+        android:background="#FAFAFA"
+        app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/text_view_search_history_label" />
 
     <TextView
         android:id="@+id/text_view_log_label"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginTop="16dp"
-        android:text="Logs del Servidor:"
+        android:text="🔧 Logs Técnicos del Servidor"
+        android:textSize="16sp"
         android:textStyle="bold"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/text_view_status_label" />
+        app:layout_constraintTop_toBottomOf="@id/recycler_view_search_history" />
 
     <ScrollView
         android:id="@+id/scroll_view_logs"
