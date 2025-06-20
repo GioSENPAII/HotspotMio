@@ -17,6 +17,7 @@ import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationCompat
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.example.bluetoothhotspotapp.di.Injector
+import com.example.bluetoothhotspotapp.notification.AppNotificationManager
 import kotlinx.coroutines.*
 import java.io.IOException
 import java.io.InputStream
@@ -32,6 +33,9 @@ class HostService : Service() {
     private val searchProcessor = Injector.provideSearchProcessor()
     private var serverThread: BluetoothServerThread? = null
     private val lock = Any() // Un objeto para sincronización
+
+    // Sistema de notificaciones
+    private lateinit var notificationManager: AppNotificationManager
 
     companion object {
         const val CHANNEL_ID = "HostServiceChannel"
@@ -49,8 +53,10 @@ class HostService : Service() {
     @RequiresApi(Build.VERSION_CODES.O)
     override fun onCreate() {
         super.onCreate()
+        notificationManager = AppNotificationManager(this)
         createNotificationChannel()
     }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val notification = createNotification("Servidor Host esperando...")
         startForeground(1, notification)
@@ -68,7 +74,6 @@ class HostService : Service() {
 
         return START_NOT_STICKY
     }
-
 
     private fun logToActivity(message: String) {
         // Usamos LocalBroadcastManager para una comunicación segura y eficiente con la Activity
@@ -107,8 +112,13 @@ class HostService : Service() {
             serverThread = null
         }
         serviceJob.cancel()
+
+        // Limpiar notificaciones al detener el servicio
+        notificationManager.clearAllNotifications()
+
         logToActivity("Servidor detenido.")
     }
+
     override fun onBind(intent: Intent?): IBinder? {
         return null
     }
@@ -131,6 +141,7 @@ class HostService : Service() {
             .setSmallIcon(R.drawable.ic_launcher_foreground) // Reemplaza con tu ícono
             .build()
     }
+
     // --- HILO PARA EL SERVIDOR BLUETOOTH ---
     private inner class BluetoothServerThread : Thread() {
         private val serverSocket: BluetoothServerSocket? by lazy(LazyThreadSafetyMode.NONE) {
@@ -180,6 +191,9 @@ class HostService : Service() {
                 val buffer = ByteArray(1024)
                 var numBytes: Int
 
+                // NUEVA: Notificar que se conectó un cliente
+                notificationManager.notifyClientConnected(clientName)
+
                 while (isActive) {
                     numBytes = inputStream.read(buffer)
                     if (numBytes == -1) break
@@ -196,6 +210,9 @@ class HostService : Service() {
 
                     // Notificar a la Activity sobre la búsqueda del cliente
                     notifyClientSearch(receivedMessage, clientName)
+
+                    // NUEVA: Notificar nueva búsqueda
+                    notificationManager.notifyNewSearch(clientName, receivedMessage)
 
                     val jsonResponse = searchProcessor.processSearchQuery(receivedMessage)
                     val responseBytes = jsonResponse.toByteArray()
@@ -241,6 +258,5 @@ class HostService : Service() {
                 }
             }
         }
-
     }
 }
