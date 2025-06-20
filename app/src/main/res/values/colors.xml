@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Colores base -->
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+
+    <!-- Tema IPN (Guinda) -->
+    <color name="ipn_primary">#8A1538</color>
+    <color name="ipn_text_light">#FFFFFF</color>
+    <color name="ipn_text_dark">#000000</color>
+
+    <!-- Tema ESCOM (Azul) -->
+    <color name="escom_primary">#003366</color>
+    <color name="escom_text_light">#FFFFFF</color>
+    <color name="escom_text_dark">#000000</color>
+</resources>

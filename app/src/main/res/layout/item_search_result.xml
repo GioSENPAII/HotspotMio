@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="12dp">
+
+    <TextView
+        android:id="@+id/text_view_title"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textColor="@color/material_dynamic_primary40"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        tools:text="Este es el título del resultado" />
+
+    <TextView
+        android:id="@+id/text_view_url"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textColor="@color/material_dynamic_tertiary40"
+        android:textSize="12sp"
+        tools:text="www.ejemplo.com" />
+
+    <TextView
+        android:id="@+id/text_view_snippet"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:textColor="?android:attr/textColorSecondary"
+        android:textSize="14sp"
+        tools:text="Este es un pequeño fragmento del contenido de la página para dar contexto sobre el resultado." />
+</LinearLayout>
