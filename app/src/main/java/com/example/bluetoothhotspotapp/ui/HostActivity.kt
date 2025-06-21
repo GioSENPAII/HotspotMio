@@ -21,6 +21,7 @@ import com.example.bluetoothhotspotapp.BaseActivity
 import com.example.bluetoothhotspotapp.data.model.SearchHistory
 import com.example.bluetoothhotspotapp.data.model.SearchResult
 import com.example.bluetoothhotspotapp.notification.AppNotificationManager
+import com.google.android.material.tabs.TabLayout
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import java.text.SimpleDateFormat
@@ -38,8 +39,14 @@ class HostActivity : BaseActivity() {
     private var currentSearchQuery: String? = null
     private var lastResultsCount: Int = 0
 
+    // Variables para logs técnicos detallados
+    private val technicalLogs = mutableListOf<String>()
+
     companion object {
         private const val NOTIFICATION_PERMISSION_REQUEST_CODE = 1001
+        private const val TAB_MONITOR = 0
+        private const val TAB_HISTORY = 1
+        private const val TAB_LOGS = 2
     }
 
     private val logReceiver = object : BroadcastReceiver() {
@@ -47,7 +54,7 @@ class HostActivity : BaseActivity() {
             when (intent?.action) {
                 HostService.ACTION_LOG -> {
                     intent.getStringExtra(HostService.EXTRA_LOG_MESSAGE)?.let { message ->
-                        addLogMessage(message)
+                        addTechnicalLog(message)
                     }
                 }
                 HostService.ACTION_CLIENT_SEARCH -> {
@@ -73,6 +80,7 @@ class HostActivity : BaseActivity() {
         binding = ActivityHostBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        setupTabs()
         setupRecyclerViews()
         setupClickListeners()
 
@@ -82,6 +90,42 @@ class HostActivity : BaseActivity() {
         // Pedir permisos de Bluetooth al iniciar
         if (!PermissionHelper.hasBluetoothPermissions(this)) {
             PermissionHelper.requestBluetoothPermissions(this)
+        }
+
+        // Mostrar la primera pestaña por defecto
+        showTab(TAB_MONITOR)
+    }
+
+    private fun setupTabs() {
+        binding.tabLayout.addTab(binding.tabLayout.newTab().setText("📱 Monitor"))
+        binding.tabLayout.addTab(binding.tabLayout.newTab().setText("📋 Historial"))
+        binding.tabLayout.addTab(binding.tabLayout.newTab().setText("🔧 Logs"))
+
+        binding.tabLayout.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
+            override fun onTabSelected(tab: TabLayout.Tab?) {
+                when (tab?.position) {
+                    TAB_MONITOR -> showTab(TAB_MONITOR)
+                    TAB_HISTORY -> showTab(TAB_HISTORY)
+                    TAB_LOGS -> showTab(TAB_LOGS)
+                }
+            }
+
+            override fun onTabUnselected(tab: TabLayout.Tab?) {}
+            override fun onTabReselected(tab: TabLayout.Tab?) {}
+        })
+    }
+
+    private fun showTab(tabIndex: Int) {
+        // Ocultar todas las secciones
+        binding.layoutMonitor.visibility = View.GONE
+        binding.layoutHistory.visibility = View.GONE
+        binding.layoutLogs.visibility = View.GONE
+
+        // Mostrar la sección seleccionada
+        when (tabIndex) {
+            TAB_MONITOR -> binding.layoutMonitor.visibility = View.VISIBLE
+            TAB_HISTORY -> binding.layoutHistory.visibility = View.VISIBLE
+            TAB_LOGS -> binding.layoutLogs.visibility = View.VISIBLE
         }
     }
 
@@ -99,12 +143,12 @@ class HostActivity : BaseActivity() {
                     arrayOf(Manifest.permission.POST_NOTIFICATIONS),
                     NOTIFICATION_PERMISSION_REQUEST_CODE
                 )
-                addLogMessage("Solicitando permisos de notificación...")
+                addTechnicalLog("Solicitando permisos de notificación...")
             } else {
-                addLogMessage("Permisos de notificación concedidos")
+                addTechnicalLog("Permisos de notificación concedidos")
             }
         } else {
-            addLogMessage("Permisos de notificación no requeridos en esta versión de Android")
+            addTechnicalLog("Permisos de notificación no requeridos en esta versión de Android")
         }
     }
 
@@ -119,10 +163,10 @@ class HostActivity : BaseActivity() {
         when (requestCode) {
             NOTIFICATION_PERMISSION_REQUEST_CODE -> {
                 if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                    addLogMessage("✅ Permisos de notificación concedidos")
+                    addTechnicalLog("✅ Permisos de notificación concedidos")
                     Toast.makeText(this, "Notificaciones habilitadas correctamente", Toast.LENGTH_SHORT).show()
                 } else {
-                    addLogMessage("❌ Permisos de notificación denegados - Las notificaciones no funcionarán")
+                    addTechnicalLog("❌ Permisos de notificación denegados - Las notificaciones no funcionarán")
                     Toast.makeText(this, "Las notificaciones están deshabilitadas", Toast.LENGTH_LONG).show()
                 }
             }
@@ -159,14 +203,26 @@ class HostActivity : BaseActivity() {
                 startService(serviceIntent)
             }
 
-            addLogMessage("Iniciando servicio Host...")
+            addTechnicalLog("🚀 Iniciando servicio Host...")
+            addTechnicalLog("📡 Configurando servidor Bluetooth...")
+            addTechnicalLog("🔧 UUID: 00001101-0000-1000-8000-00805F9B34FB")
+            addTechnicalLog("📊 Servicio en modo foreground")
         }
 
         binding.buttonStopHost.setOnClickListener {
             val serviceIntent = Intent(this, HostService::class.java)
             stopService(serviceIntent)
             resetClientMonitor()
-            addLogMessage("Deteniendo servicio Host...")
+            addTechnicalLog("🛑 Deteniendo servicio Host...")
+            addTechnicalLog("🔌 Cerrando sockets de conexión")
+            addTechnicalLog("🧹 Limpiando recursos")
+        }
+
+        // Botón para limpiar logs
+        binding.buttonClearLogs.setOnClickListener {
+            technicalLogs.clear()
+            updateLogsDisplay()
+            addTechnicalLog("🗑️ Logs limpiados por el usuario")
         }
     }
 
@@ -194,9 +250,18 @@ class HostActivity : BaseActivity() {
         }
         binding.layoutSearchStats.visibility = View.VISIBLE
         binding.textViewResultsCount.text = "Procesando..."
+        binding.progressBarSearch.visibility = View.VISIBLE
 
         // Ocultar resultados anteriores mientras se procesan los nuevos
         binding.layoutCurrentResults.visibility = View.GONE
+
+        // Logs técnicos detallados
+        addTechnicalLog("📥 NUEVA BÚSQUEDA RECIBIDA")
+        addTechnicalLog("👤 Cliente: $clientName")
+        addTechnicalLog("🔍 Query: \"$query\"")
+        addTechnicalLog("📏 Tamaño query: ${query.length} caracteres")
+        addTechnicalLog("🕒 Timestamp: ${getCurrentTimestamp()}")
+        addTechnicalLog("⚡ Iniciando procesamiento...")
     }
 
     private fun onSearchResults(resultsCount: Int) {
@@ -204,6 +269,7 @@ class HostActivity : BaseActivity() {
 
         // Actualizar contador de resultados
         binding.textViewResultsCount.text = resultsCount.toString()
+        binding.progressBarSearch.visibility = View.GONE
 
         // Agregar al historial si tenemos toda la información
         currentSearchQuery?.let { query ->
@@ -217,12 +283,17 @@ class HostActivity : BaseActivity() {
                 // Agregar al inicio de la lista para mostrar las más recientes primero
                 searchHistoryList.add(0, searchHistory)
 
-                // Limitar el historial a las últimas 50 búsquedas
-                if (searchHistoryList.size > 50) {
+                // Limitar el historial a las últimas 100 búsquedas
+                if (searchHistoryList.size > 100) {
                     searchHistoryList.removeAt(searchHistoryList.size - 1)
                 }
 
                 searchHistoryAdapter.submitList(searchHistoryList.toList())
+
+                // Logs técnicos del procesamiento
+                addTechnicalLog("✅ PROCESAMIENTO COMPLETADO")
+                addTechnicalLog("📊 Resultados encontrados: $resultsCount")
+                addTechnicalLog("💾 Agregado al historial (${searchHistoryList.size} total)")
             }
         }
     }
@@ -243,13 +314,30 @@ class HostActivity : BaseActivity() {
                 } else {
                     binding.layoutCurrentResults.visibility = View.GONE
                 }
+
+                // Logs técnicos detallados del envío
+                val jsonSize = resultsJson.toByteArray().size
+                addTechnicalLog("📤 ENVIANDO RESPUESTA AL CLIENTE")
+                addTechnicalLog("📦 Tamaño JSON: $jsonSize bytes")
+                addTechnicalLog("🔢 Número de resultados: ${results.size}")
+                addTechnicalLog("📋 Formato: JSON UTF-8")
+
+                if (results.isNotEmpty()) {
+                    addTechnicalLog("🔗 Primer resultado: \"${results[0].title.take(50)}...\"")
+                }
+
+                addTechnicalLog("✈️ Transmisión completada")
+                addTechnicalLog("⏰ Tiempo total: ${getCurrentTimestamp()}")
+                addTechnicalLog("─".repeat(50))
+
             } catch (e: Exception) {
                 // En caso de error al parsear el JSON, ocultar la sección
                 binding.layoutCurrentResults.visibility = View.GONE
-                addLogMessage("Error al mostrar resultados: ${e.message}")
+                addTechnicalLog("❌ ERROR al procesar resultados: ${e.message}")
             }
         } else {
             binding.layoutCurrentResults.visibility = View.GONE
+            addTechnicalLog("⚠️ Respuesta vacía recibida")
         }
     }
 
@@ -262,6 +350,7 @@ class HostActivity : BaseActivity() {
         binding.textViewCurrentSearch.visibility = View.GONE
         binding.layoutSearchStats.visibility = View.GONE
         binding.layoutCurrentResults.visibility = View.GONE
+        binding.progressBarSearch.visibility = View.GONE
 
         // Limpiar resultados actuales
         currentResultsAdapter.submitList(emptyList())
@@ -285,14 +374,33 @@ class HostActivity : BaseActivity() {
         LocalBroadcastManager.getInstance(this).unregisterReceiver(logReceiver)
     }
 
-    private fun addLogMessage(message: String) {
-        val currentTime = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
-        val currentLog = binding.textViewLogs.text.toString()
-        binding.textViewLogs.text = "$currentTime - $message\n$currentLog"
+    // Función mejorada para logs técnicos
+    private fun addTechnicalLog(message: String) {
+        val timestamp = getCurrentTimestamp()
+        val formattedLog = "$timestamp - $message"
 
-        // Hacemos que el ScrollView se desplace hasta el fondo para ver el último log
-        binding.scrollViewLogs.post {
-            binding.scrollViewLogs.fullScroll(View.FOCUS_DOWN)
+        // Agregar al principio de la lista para mostrar los más recientes arriba
+        technicalLogs.add(0, formattedLog)
+
+        // Limitar a los últimos 500 logs para evitar problemas de memoria
+        if (technicalLogs.size > 500) {
+            technicalLogs.removeAt(technicalLogs.size - 1)
         }
+
+        updateLogsDisplay()
+    }
+
+    private fun updateLogsDisplay() {
+        val logsText = technicalLogs.joinToString("\n")
+        binding.textViewLogs.text = logsText
+
+        // Auto-scroll al top para ver los logs más recientes
+        binding.scrollViewLogs.post {
+            binding.scrollViewLogs.scrollTo(0, 0)
+        }
+    }
+
+    private fun getCurrentTimestamp(): String {
+        return SimpleDateFormat("HH:mm:ss.SSS", Locale.getDefault()).format(Date())
     }
 }

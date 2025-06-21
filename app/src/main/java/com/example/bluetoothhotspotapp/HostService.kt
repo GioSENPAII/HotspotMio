@@ -24,6 +24,7 @@ import kotlinx.coroutines.*
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
+import kotlin.system.measureTimeMillis
 
 // Necesitamos este permiso aquí, lo pediremos en la Activity
 @SuppressLint("MissingPermission")
@@ -38,6 +39,11 @@ class HostService : Service() {
 
     // Sistema de notificaciones
     private lateinit var notificationManager: AppNotificationManager
+
+    // Contadores para estadísticas
+    private var totalConnections = 0
+    private var totalSearches = 0
+    private var totalBytesTransferred = 0L
 
     companion object {
         const val CHANNEL_ID = "HostServiceChannel"
@@ -61,7 +67,8 @@ class HostService : Service() {
             createNotificationChannel()
         }
 
-        logToActivity("HostService creado - Sistema de notificaciones inicializado")
+        logToActivity("🎯 HostService creado - Sistema de notificaciones inicializado")
+        logToActivity("📊 Estadísticas: Conexiones=$totalConnections, Búsquedas=$totalSearches")
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -73,9 +80,11 @@ class HostService : Service() {
             if (serverThread == null) {
                 serverThread = BluetoothServerThread()
                 serverThread?.start()
-                logToActivity("Servidor Bluetooth iniciado. Esperando conexiones.")
+                logToActivity("🚀 Servidor Bluetooth iniciado. Esperando conexiones...")
+                logToActivity("🔧 Thread ID: ${serverThread?.id}")
+                logToActivity("📡 Escuchando en UUID: ${Constants.BLUETOOTH_UUID}")
             } else {
-                logToActivity("El servidor ya está en ejecución.")
+                logToActivity("⚠️ El servidor ya está en ejecución.")
             }
         }
 
@@ -136,13 +145,15 @@ class HostService : Service() {
         if (hasNotificationPermission()) {
             try {
                 notificationManager.clearAllNotifications()
-                logToActivity("Notificaciones limpiadas")
+                logToActivity("🧹 Notificaciones limpiadas")
             } catch (e: Exception) {
                 Log.e("HostService", "Error al limpiar notificaciones: ${e.message}")
             }
         }
 
-        logToActivity("Servidor detenido.")
+        logToActivity("🛑 Servidor detenido.")
+        logToActivity("📊 Estadísticas finales: ${totalConnections} conexiones, ${totalSearches} búsquedas")
+        logToActivity("💾 Total bytes transferidos: ${totalBytesTransferred}")
     }
 
     override fun onBind(intent: Intent?): IBinder? {
@@ -158,7 +169,7 @@ class HostService : Service() {
         )
         val manager = getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(serviceChannel)
-        logToActivity("Canal de notificaciones creado")
+        logToActivity("📢 Canal de notificaciones creado")
     }
 
     private fun createNotification(text: String): Notification {
@@ -179,19 +190,32 @@ class HostService : Service() {
         }
 
         override fun run() {
+            logToActivity("🔄 Hilo del servidor iniciado")
+            logToActivity("🔍 Socket del servidor: ${serverSocket?.let { "Creado" } ?: "ERROR"}")
+
             var shouldLoop = true
             while (shouldLoop) {
                 val socket: BluetoothSocket? = try {
+                    logToActivity("⏳ Esperando conexión entrante...")
                     // accept() es una llamada bloqueante. Se detiene aquí hasta que un cliente se conecta.
-                    serverSocket?.accept()
+                    val startTime = System.currentTimeMillis()
+                    val acceptedSocket = serverSocket?.accept()
+                    val acceptTime = System.currentTimeMillis() - startTime
+                    logToActivity("⚡ Conexión aceptada en ${acceptTime}ms")
+                    acceptedSocket
                 } catch (e: IOException) {
-                    logToActivity("Error al aceptar conexión: ${e.message}")
+                    logToActivity("❌ Error al aceptar conexión: ${e.message}")
+                    logToActivity("🔧 Tipo de error: ${e.javaClass.simpleName}")
                     shouldLoop = false
                     null
                 }
                 socket?.also {
+                    totalConnections++
                     val clientName = it.remoteDevice.name ?: "Cliente desconocido"
-                    logToActivity("Cliente conectado: $clientName")
+                    val clientAddress = it.remoteDevice.address
+                    logToActivity("🎉 Cliente conectado #$totalConnections: $clientName")
+                    logToActivity("📱 Dirección MAC: $clientAddress")
+                    logToActivity("🔗 Socket: ${if (it.isConnected) "Conectado" else "Desconectado"}")
                     manageClientSocket(it, clientName)
                     // Para este ejemplo, cerramos el socket del servidor después de una conexión.
                     // Si quisieras múltiples clientes simultáneos, la lógica sería más compleja.
@@ -199,51 +223,69 @@ class HostService : Service() {
                     // shouldLoop = false
                 }
             }
+            logToActivity("🔚 Hilo del servidor terminado")
         }
 
         fun cancel() {
             try {
                 serverSocket?.close()
+                logToActivity("🔌 Socket del servidor cerrado")
             } catch (e: IOException) {
-                logToActivity("No se pudo cerrar el socket del servidor: ${e.message}")
+                logToActivity("⚠️ No se pudo cerrar el socket del servidor: ${e.message}")
             }
         }
     }
 
     private fun manageClientSocket(socket: BluetoothSocket, clientName: String) {
         serviceScope.launch {
+            logToActivity("🚀 Iniciando gestión del cliente: $clientName")
+
             try {
                 val inputStream: InputStream = socket.inputStream
                 val outputStream: OutputStream = socket.outputStream
                 val buffer = ByteArray(1024)
                 var numBytes: Int
 
+                logToActivity("📥 Streams configurados para $clientName")
+                logToActivity("📊 Buffer size: ${buffer.size} bytes")
+
                 // CORREGIDO: Verificar permisos antes de mostrar notificación
                 if (hasNotificationPermission()) {
                     try {
                         notificationManager.notifyClientConnected(clientName)
-                        logToActivity("Notificación de cliente conectado enviada")
+                        logToActivity("📢 Notificación de cliente conectado enviada")
                     } catch (e: Exception) {
                         Log.e("HostService", "Error al enviar notificación de conexión: ${e.message}")
-                        logToActivity("Error al enviar notificación de conexión: ${e.message}")
+                        logToActivity("❌ Error al enviar notificación de conexión: ${e.message}")
                     }
                 } else {
-                    logToActivity("Sin permisos para notificaciones - Cliente conectado: $clientName")
+                    logToActivity("⚠️ Sin permisos para notificaciones - Cliente conectado: $clientName")
                 }
 
                 while (isActive) {
+                    val readStartTime = System.currentTimeMillis()
                     numBytes = inputStream.read(buffer)
-                    if (numBytes == -1) break
+                    val readTime = System.currentTimeMillis() - readStartTime
+
+                    if (numBytes == -1) {
+                        logToActivity("🔚 Fin de stream detectado para $clientName")
+                        break
+                    }
 
                     val receivedMessage = String(buffer, 0, numBytes)
+                    logToActivity("📨 Bytes recibidos: $numBytes en ${readTime}ms")
+                    totalBytesTransferred += numBytes
 
                     // Si el mensaje es un ping, lo ignoramos y seguimos escuchando
                     if (receivedMessage == "ping_keep_alive") {
-                        logToActivity("Ping recibido de $clientName")
+                        logToActivity("💓 Ping recibido de $clientName")
                         continue
                     }
 
-                    logToActivity("Petición recibida de $clientName: '$receivedMessage'")
+                    totalSearches++
+                    logToActivity("🔍 BÚSQUEDA #$totalSearches recibida de $clientName")
+                    logToActivity("📝 Query: \"$receivedMessage\"")
+                    logToActivity("📏 Longitud: ${receivedMessage.length} caracteres")
 
                     // Notificar a la Activity sobre la búsqueda del cliente
                     notifyClientSearch(receivedMessage, clientName)
@@ -252,56 +294,80 @@ class HostService : Service() {
                     if (hasNotificationPermission()) {
                         try {
                             notificationManager.notifyNewSearch(clientName, receivedMessage)
-                            logToActivity("Notificación de nueva búsqueda enviada")
+                            logToActivity("📢 Notificación de nueva búsqueda enviada")
                         } catch (e: Exception) {
                             Log.e("HostService", "Error al enviar notificación de búsqueda: ${e.message}")
-                            logToActivity("Error al enviar notificación de búsqueda: ${e.message}")
+                            logToActivity("❌ Error al enviar notificación de búsqueda: ${e.message}")
                         }
                     } else {
-                        logToActivity("Sin permisos para notificaciones - Nueva búsqueda: $receivedMessage")
+                        logToActivity("⚠️ Sin permisos para notificaciones - Nueva búsqueda: $receivedMessage")
                     }
 
-                    val jsonResponse = searchProcessor.processSearchQuery(receivedMessage)
-                    val responseBytes = jsonResponse.toByteArray()
+                    // Medir tiempo de procesamiento
+                    val processingTime = measureTimeMillis {
+                        val jsonResponse = searchProcessor.processSearchQuery(receivedMessage)
+                        val responseBytes = jsonResponse.toByteArray()
 
-                    // Contar resultados para mostrar en la UI
-                    val resultsCount = try {
-                        val gson = com.google.gson.Gson()
-                        val listType = object : com.google.gson.reflect.TypeToken<List<Any>>() {}.type
-                        val results: List<Any> = gson.fromJson(jsonResponse, listType)
-                        results.size
-                    } catch (e: Exception) {
-                        0
+                        // Contar resultados para mostrar en la UI
+                        val resultsCount = try {
+                            val gson = com.google.gson.Gson()
+                            val listType = object : com.google.gson.reflect.TypeToken<List<Any>>() {}.type
+                            val results: List<Any> = gson.fromJson(jsonResponse, listType)
+                            results.size
+                        } catch (e: Exception) {
+                            logToActivity("⚠️ Error al contar resultados: ${e.message}")
+                            0
+                        }
+
+                        logToActivity("⚙️ Procesamiento completado: $resultsCount resultados")
+
+                        // --- LÓGICA DE ENVÍO MEJORADA CON LOGS DETALLADOS ---
+                        val sendStartTime = System.currentTimeMillis()
+
+                        // 1. Convertir el tamaño del JSON a bytes
+                        val size = responseBytes.size
+                        val sizeBytes = size.toString().toByteArray()
+
+                        logToActivity("📦 Preparando envío:")
+                        logToActivity("   • Tamaño JSON: $size bytes")
+                        logToActivity("   • Tamaño header: ${sizeBytes.size} bytes")
+
+                        // 2. Enviar el tamaño, seguido de un delimitador
+                        outputStream.write(sizeBytes)
+                        outputStream.write('\n'.code) // Delimitador
+                        logToActivity("📤 Header enviado: $size")
+
+                        // 3. Enviar el JSON
+                        outputStream.write(responseBytes)
+                        outputStream.flush()
+
+                        val sendTime = System.currentTimeMillis() - sendStartTime
+                        totalBytesTransferred += size + sizeBytes.size + 1 // +1 por el delimitador
+
+                        logToActivity("✅ Respuesta enviada a $clientName:")
+                        logToActivity("   • $resultsCount resultados")
+                        logToActivity("   • $size bytes de datos")
+                        logToActivity("   • Enviado en ${sendTime}ms")
+                        logToActivity("   • Total bytes acumulados: $totalBytesTransferred")
+
+                        // Notificar a la Activity sobre los resultados enviados
+                        notifySearchResults(resultsCount, jsonResponse)
                     }
 
-                    // --- LÓGICA DE ENVÍO MEJORADA ---
-                    // 1. Convertir el tamaño del JSON a bytes
-                    val size = responseBytes.size
-                    val sizeBytes = size.toString().toByteArray()
-
-                    // 2. Enviar el tamaño, seguido de un delimitador (ej. un salto de línea)
-                    outputStream.write(sizeBytes)
-                    outputStream.write('\n'.code) // Delimitador
-
-                    // 3. Enviar el JSON
-                    outputStream.write(responseBytes)
-                    outputStream.flush()
-
-                    logToActivity("Respuesta enviada a $clientName: $resultsCount resultados ($size bytes)")
-
-                    // Notificar a la Activity sobre los resultados enviados (ahora incluye el JSON)
-                    notifySearchResults(resultsCount, jsonResponse)
+                    logToActivity("⏱️ Tiempo total de procesamiento: ${processingTime}ms")
+                    logToActivity("─".repeat(50))
                 }
             } catch (e: IOException) {
-                logToActivity("Conexión perdida con $clientName: ${e.message}")
+                logToActivity("💔 Conexión perdida con $clientName: ${e.message}")
+                logToActivity("🔧 Tipo de error: ${e.javaClass.simpleName}")
             } finally {
                 // Este bloque se ejecutará siempre, incluso si hay un error,
                 // asegurando que el socket se cierre.
                 try {
                     socket.close()
-                    logToActivity("Socket del cliente $clientName cerrado.")
+                    logToActivity("🔌 Socket del cliente $clientName cerrado correctamente")
                 } catch (e: IOException) {
-                    logToActivity("Error al cerrar el socket del cliente $clientName.")
+                    logToActivity("⚠️ Error al cerrar el socket del cliente $clientName: ${e.message}")
                 }
             }
         }
