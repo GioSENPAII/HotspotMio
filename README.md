@@ -2,6 +2,8 @@
 
 Una aplicación Android que permite compartir conexión a internet a través de Bluetooth, funcionando como un hotspot que procesa búsquedas web y devuelve resultados a dispositivos cliente conectados.
 
+![Video demostrativo](assets/salida.gif)
+
 ## 🌟 Características Principales
 
 - **Modo Host**: Crea un servidor Bluetooth que acepta conexiones y procesa búsquedas web
