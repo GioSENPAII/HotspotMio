@@ -1,8 +1,9 @@
 package com.example.bluetoothhotspotapp.ui
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Bundle
-import androidx.appcompat.app.AppCompatActivity
 import com.example.bluetoothhotspotapp.HostService
 import com.example.bluetoothhotspotapp.databinding.ActivityHostBinding
 import android.content.BroadcastReceiver
@@ -10,12 +11,16 @@ import android.content.Context
 import android.content.IntentFilter
 import android.os.Build
 import android.view.View
+import android.widget.Toast
 import androidx.annotation.RequiresApi
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.bluetoothhotspotapp.BaseActivity
 import com.example.bluetoothhotspotapp.data.model.SearchHistory
 import com.example.bluetoothhotspotapp.data.model.SearchResult
+import com.example.bluetoothhotspotapp.notification.AppNotificationManager
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import java.text.SimpleDateFormat
@@ -32,6 +37,10 @@ class HostActivity : BaseActivity() {
     private var currentClientName: String? = null
     private var currentSearchQuery: String? = null
     private var lastResultsCount: Int = 0
+
+    companion object {
+        private const val NOTIFICATION_PERMISSION_REQUEST_CODE = 1001
+    }
 
     private val logReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -67,9 +76,56 @@ class HostActivity : BaseActivity() {
         setupRecyclerViews()
         setupClickListeners()
 
-        // Pedir permisos al iniciar
+        // NUEVO: Verificar y solicitar permisos de notificación
+        checkAndRequestNotificationPermissions()
+
+        // Pedir permisos de Bluetooth al iniciar
         if (!PermissionHelper.hasBluetoothPermissions(this)) {
             PermissionHelper.requestBluetoothPermissions(this)
+        }
+    }
+
+    // NUEVO: Función para verificar y solicitar permisos de notificación
+    private fun checkAndRequestNotificationPermissions() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(
+                    this,
+                    Manifest.permission.POST_NOTIFICATIONS
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
+                // Solicitar el permiso
+                ActivityCompat.requestPermissions(
+                    this,
+                    arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                    NOTIFICATION_PERMISSION_REQUEST_CODE
+                )
+                addLogMessage("Solicitando permisos de notificación...")
+            } else {
+                addLogMessage("Permisos de notificación concedidos")
+            }
+        } else {
+            addLogMessage("Permisos de notificación no requeridos en esta versión de Android")
+        }
+    }
+
+    // NUEVO: Manejar la respuesta de permisos
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+
+        when (requestCode) {
+            NOTIFICATION_PERMISSION_REQUEST_CODE -> {
+                if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                    addLogMessage("✅ Permisos de notificación concedidos")
+                    Toast.makeText(this, "Notificaciones habilitadas correctamente", Toast.LENGTH_SHORT).show()
+                } else {
+                    addLogMessage("❌ Permisos de notificación denegados - Las notificaciones no funcionarán")
+                    Toast.makeText(this, "Las notificaciones están deshabilitadas", Toast.LENGTH_LONG).show()
+                }
+            }
         }
     }
 
@@ -91,18 +147,38 @@ class HostActivity : BaseActivity() {
 
     private fun setupClickListeners() {
         binding.buttonStartHost.setOnClickListener {
+            // Verificar permisos antes de iniciar el servicio
+            if (!hasNotificationPermission()) {
+                Toast.makeText(this, "Recomendamos habilitar las notificaciones para mejor experiencia", Toast.LENGTH_LONG).show()
+            }
+
             val serviceIntent = Intent(this, HostService::class.java)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 startForegroundService(serviceIntent)
             } else {
                 startService(serviceIntent)
             }
+
+            addLogMessage("Iniciando servicio Host...")
         }
 
         binding.buttonStopHost.setOnClickListener {
             val serviceIntent = Intent(this, HostService::class.java)
             stopService(serviceIntent)
             resetClientMonitor()
+            addLogMessage("Deteniendo servicio Host...")
+        }
+    }
+
+    // NUEVO: Función para verificar permisos de notificación
+    private fun hasNotificationPermission(): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
+        } else {
+            true // En versiones anteriores no se necesita permiso
         }
     }
 
@@ -212,7 +288,7 @@ class HostActivity : BaseActivity() {
     private fun addLogMessage(message: String) {
         val currentTime = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
         val currentLog = binding.textViewLogs.text.toString()
-        binding.textViewLogs.text = "$currentLog\n$currentTime - $message"
+        binding.textViewLogs.text = "$currentTime - $message\n$currentLog"
 
         // Hacemos que el ScrollView se desplace hasta el fondo para ver el último log
         binding.scrollViewLogs.post {

@@ -10,11 +10,13 @@ import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothServerSocket
 import android.bluetooth.BluetoothSocket
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
 import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.example.bluetoothhotspotapp.di.Injector
 import com.example.bluetoothhotspotapp.notification.AppNotificationManager
@@ -50,11 +52,16 @@ class HostService : Service() {
         const val EXTRA_RESULTS_JSON = "extra_results_json"
     }
 
-    @RequiresApi(Build.VERSION_CODES.O)
     override fun onCreate() {
         super.onCreate()
+        // Inicializar el sistema de notificaciones ANTES de crear el canal
         notificationManager = AppNotificationManager(this)
-        createNotificationChannel()
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            createNotificationChannel()
+        }
+
+        logToActivity("HostService creado - Sistema de notificaciones inicializado")
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -105,6 +112,18 @@ class HostService : Service() {
         LocalBroadcastManager.getInstance(this).sendBroadcast(dataIntent)
     }
 
+    // Función para verificar permisos de notificación
+    private fun hasNotificationPermission(): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            ContextCompat.checkSelfPermission(
+                this,
+                android.Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
+        } else {
+            true // En versiones anteriores no se necesita permiso
+        }
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         synchronized(lock) {
@@ -113,8 +132,15 @@ class HostService : Service() {
         }
         serviceJob.cancel()
 
-        // Limpiar notificaciones al detener el servicio
-        notificationManager.clearAllNotifications()
+        // Limpiar notificaciones al detener el servicio solo si tenemos permisos
+        if (hasNotificationPermission()) {
+            try {
+                notificationManager.clearAllNotifications()
+                logToActivity("Notificaciones limpiadas")
+            } catch (e: Exception) {
+                Log.e("HostService", "Error al limpiar notificaciones: ${e.message}")
+            }
+        }
 
         logToActivity("Servidor detenido.")
     }
@@ -132,6 +158,7 @@ class HostService : Service() {
         )
         val manager = getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(serviceChannel)
+        logToActivity("Canal de notificaciones creado")
     }
 
     private fun createNotification(text: String): Notification {
@@ -191,8 +218,18 @@ class HostService : Service() {
                 val buffer = ByteArray(1024)
                 var numBytes: Int
 
-                // NUEVA: Notificar que se conectó un cliente
-                notificationManager.notifyClientConnected(clientName)
+                // CORREGIDO: Verificar permisos antes de mostrar notificación
+                if (hasNotificationPermission()) {
+                    try {
+                        notificationManager.notifyClientConnected(clientName)
+                        logToActivity("Notificación de cliente conectado enviada")
+                    } catch (e: Exception) {
+                        Log.e("HostService", "Error al enviar notificación de conexión: ${e.message}")
+                        logToActivity("Error al enviar notificación de conexión: ${e.message}")
+                    }
+                } else {
+                    logToActivity("Sin permisos para notificaciones - Cliente conectado: $clientName")
+                }
 
                 while (isActive) {
                     numBytes = inputStream.read(buffer)
@@ -211,8 +248,18 @@ class HostService : Service() {
                     // Notificar a la Activity sobre la búsqueda del cliente
                     notifyClientSearch(receivedMessage, clientName)
 
-                    // NUEVA: Notificar nueva búsqueda
-                    notificationManager.notifyNewSearch(clientName, receivedMessage)
+                    // CORREGIDO: Verificar permisos antes de mostrar notificación
+                    if (hasNotificationPermission()) {
+                        try {
+                            notificationManager.notifyNewSearch(clientName, receivedMessage)
+                            logToActivity("Notificación de nueva búsqueda enviada")
+                        } catch (e: Exception) {
+                            Log.e("HostService", "Error al enviar notificación de búsqueda: ${e.message}")
+                            logToActivity("Error al enviar notificación de búsqueda: ${e.message}")
+                        }
+                    } else {
+                        logToActivity("Sin permisos para notificaciones - Nueva búsqueda: $receivedMessage")
+                    }
 
                     val jsonResponse = searchProcessor.processSearchQuery(receivedMessage)
                     val responseBytes = jsonResponse.toByteArray()
